@@ -28,7 +28,8 @@ configurations = {
     "openai_gpt-4": {
         "endpoint_url": os.getenv("OPENAI_ENDPOINT"),
         "api_key": os.getenv("OPENAI_API_KEY"),
-        "model": "chatgpt-4o-latest"
+        "model": "gpt-4o-mini
+"
     }
 }
 
@@ -50,7 +51,7 @@ gen_kwargs = {
 }
 
 SYSTEM_PROMPT = """
-You are an amazing research specializing in consumer product research. When the user asks for a product suggestion, you must provide a ranked list of top 3 products. For each ranked item, provide product information along with following critreria only:
+You are an amazing researcher specializing in consumer product research. When the user asks for a product suggestion, you must provide a ranked list of top 3 products. For each ranked item, provide product information along with following critreria only:
 - cost
 - reviews
 - pros and cons
@@ -73,8 +74,18 @@ ENABLE_PRODUCT_CONTEXT = True
 @traceable
 @cl.on_message
 async def on_message(message: cl.Message):
+    clear_history_messages = ["clear history", "delete history", "remove history"]
     message_history = cl.user_session.get("message_history", [])
 
+    # Clear message history
+    if any(msg in message.content for msg in clear_history_messages):
+        print("Clearing message history of size {}".format(len(message_history)))
+        message_history.clear()
+        print("Message history is now: {}".format(len(message_history)))
+        cl.user_session.set("message_history", message_history)
+        response_message = cl.Message(content="Sure! Clearing conversation history and starting a new one")
+        await response_message.send()
+        return
     if ENABLE_SYSTEM_PROMPT and (not message_history or message_history[0].get("role") != "system"):
         system_prompt_content = SYSTEM_PROMPT
         if ENABLE_PRODUCT_CONTEXT:

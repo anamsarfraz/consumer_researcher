@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 
-def parse_google_search_results(text, max_results=3):
+def parse_google_search_results(text, max_results=1):
     links = []
     ## split then join to convert spaces to + in link
     url = 'https://google.com/search?q=' + '+'.join(text.split())

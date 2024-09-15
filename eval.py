@@ -1,7 +1,10 @@
 from langsmith.evaluation import evaluate, LangChainStringEvaluator
 from langsmith.schemas import Run, Example
 from openai import OpenAI
+from langsmith import Client
 import json
+import traceback
+
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -43,31 +46,41 @@ def prompt_compliance_evaluator(run: Run, example: Example) -> dict:
     Model Output: {model_output}
 
     Based on the above information, evaluate the model's output for compliance with the system prompt and context of the conversation. 
-    Provide a score from 1 to 4, where 1 is completely non-compliant and 4 is perfectly compliant.
+    Evaluate the model's output on the following two keys metrics:
+    - Successful extraction: Model is able to pull out the products with product info (ratings, link, pros / cons, etc)
+    - Source quality rating: How legitimate and reliable is this source of the information.
+    
+    Provide a score from 1 to 4, where 1 is completely non-compliant and 4 is perfectly compliant for both metrics.
 
-Here is the scale you should use to build your answer to score the system_answer:
-1: The system_answer is terrible: completely irrelevant to the question asked, or very partial
-2: The system_answer is mostly not helpful: misses some key aspects of the question
-3: The system_answer is mostly helpful: provides good information, but still could be improved
-4: The system_answer is excellent: relevant, direct, detailed, and addresses all the concerns raised in the question
+Here is the scale you should use to build your answer to score the successful extraction metric with reference to the system_answer:
+1: The information_extraction is terrible: completely irrelevant to the question asked, or very partial
+2: The information_extraction is mostly not helpful: misses some key aspects of the question
+3: The information_extraction is mostly helpful: provides good information, but still could be improved
+4: The information_extraction is excellent: relevant, direct, detailed, and addresses all the aspects of the question
 
-Here is the scale you should use to build your answer to score the quality of the original source ini terms of reliability from where the context has been provided:
-1: The source_quality is not reliable at all: completely irrelevant to the question asked, or very partial
-2: The source_quality is mostly not reliable: misses some key aspects of the question
-3: The source_quality is mostly reliable: provides good information, but still could be improved
-4: The source_quality is highly reliable: relevant, direct, detailed, and addresses all the concerns raised in the question
+Here is the scale you should use to build your answer to score the quality of the source for being reliable and legitimate:
+1: The source_quality is not reliable at all: completely irrelevant to the question asked, or very partial. The answer cannot be generated using this information.
+2: The source_quality is mostly not reliable: misses some key aspects of the question and doesn't contain enough data to generate answers
+3: The source_quality is mostly reliable: provides helpful information to generate answers, but still could be improved
+4: The source_quality is highly reliable: relevant, direct, detailed, and contains all the neccessary information to generate a good answer.
 
-You can give floating point score as well with 1-4
-    Respond in the following JSON format:
-    {{
-        "source_quality": <int>,
-        "score": <int>
-        "explanation": "<string>"
-    }}
+    Respond in the following correct JSON format with double quotes:
+    {[
+        {
+            "key": "information_extraction",
+            "score": "<int>",
+            "explanation": "<string>"
+        },
+        {
+            "key": "source_quality",
+            "score": "<int>",
+            "explanation": "<string>"
+        }
+    ]}
     """
 
     response = client.chat.completions.create(
-        model="chatgpt-4o-latest",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an AI assistant tasked with evaluating the compliance of model outputs to given prompts and conversation context."},
             {"role": "user", "content": evaluation_prompt}
@@ -76,25 +89,44 @@ You can give floating point score as well with 1-4
     )
 
     try:
-        result = json.loads(response.choices[0].message.content)
+        res_content = response.choices[0].message.content
+
+        print("Response: {}".format(res_content))
+        result = json.loads(res_content[res_content.find('['):])
         return {
-            "key": "prompt_compliance",
-            "successful_information_extraction": result["score"] / 4,  # Normalize to 0-1 range
-            "score": result["source_quality"] /4,
-            "reason": result["explanation"]
+            "results": [{
+                "key": result[0]["key"],
+                "score": int(result[0]["score"]) /4,
+                "reason": result[0]["explanation"]
+            },
+            {
+                "key": result[1]["key"],
+                "score": int(result[1]["score"]) /4,
+                "reason": result[1]["explanation"]
+            }]
         }
+
     except json.JSONDecodeError:
         return {
-            "key": "prompt_compliance",
-            "score": 0,
-            "reason": "Failed to parse evaluator response"
+            "results": [{
+                "key": "information_extraction",
+                "score": 0,
+                "reason": "Failed to parse evaluator response: {}\nEvaluator response: {}".format(traceback.format_exc(), response.choices[0].message.content)
+            },
+            {
+                "key": "source_quality",
+                "score": 0,
+                "reason": "Failed to parse evaluator response"
+            }]
         }
 
 
+# Langsmit Client
+lang_client = Client()
 # The name or UUID of the LangSmith dataset to evaluate on.
 data_set =  "consumer_researcher_ds"
 # A string to prefix the experiment name with.
-experiment_prefix = "cr_prompt_compliance"
+experiment_prefix = "cr_metric_compliance"
 
 # List of evaluators to score the outputs of target task
 evaluators = [
@@ -104,9 +136,7 @@ evaluators = [
 # Evaluate the target task
 results = evaluate(
     lambda inputs: inputs,
-    data=data_set,
+    data=lang_client.list_examples(dataset_name=data_set, splits=["base"]),
     evaluators=evaluators,
     experiment_prefix=experiment_prefix,
 )
-
-print(results)
