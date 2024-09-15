@@ -4,7 +4,8 @@ from openai import OpenAI
 from langsmith import Client
 import json
 import traceback
-
+import time
+import re
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -64,7 +65,7 @@ Here is the scale you should use to build your answer to score the quality of th
 3: The source_quality is mostly reliable: provides helpful information to generate answers, but still could be improved
 4: The source_quality is highly reliable: relevant, direct, detailed, and contains all the neccessary information to generate a good answer.
 
-    Respond in the following correct JSON format with double quotes:
+    Respond in the following correct and exact JSON format with double quotes:
     {[
         {
             "key": "information_extraction",
@@ -89,10 +90,13 @@ Here is the scale you should use to build your answer to score the quality of th
     )
 
     try:
+        pattern = r"(?<=\{|:|,)\s*'|'\s*(?=[:,}\]])"
         res_content = response.choices[0].message.content
 
-        print("Response: {}".format(res_content))
-        result = json.loads(res_content[res_content.find('['):])
+        replacement = '"'
+        formatted_res = re.sub(pattern, replacement, res_content[res_content.find('['):])
+        print("Formatted Response: {}".format(formatted_res))
+        result = json.loads(formatted_res)
         return {
             "results": [{
                 "key": result[0]["key"],
@@ -107,6 +111,7 @@ Here is the scale you should use to build your answer to score the quality of th
         }
 
     except json.JSONDecodeError:
+        print("Error loading JSON:\n{}".format(traceback.format_exc()))
         return {
             "results": [{
                 "key": "information_extraction",
@@ -133,10 +138,13 @@ evaluators = [
     prompt_compliance_evaluator
 ]
 
+dataset_splits = ["base", "second", "third"]
 # Evaluate the target task
-results = evaluate(
-    lambda inputs: inputs,
-    data=lang_client.list_examples(dataset_name=data_set, splits=["base"]),
-    evaluators=evaluators,
-    experiment_prefix=experiment_prefix,
-)
+for split in dataset_splits:
+    results = evaluate(
+        lambda inputs: inputs,
+        data=lang_client.list_examples(dataset_name=data_set, splits=[split]),
+        evaluators=evaluators,
+        experiment_prefix=experiment_prefix,
+    )
+    time.sleep(3)
