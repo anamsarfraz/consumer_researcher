@@ -28,8 +28,7 @@ configurations = {
     "openai_gpt-4": {
         "endpoint_url": os.getenv("OPENAI_ENDPOINT"),
         "api_key": os.getenv("OPENAI_API_KEY"),
-        "model": "gpt-4o-mini
-"
+        "model": "gpt-4o-mini"
     }
 }
 
