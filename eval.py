@@ -33,10 +33,10 @@ configurations = {
 }
 
 # Choose configuration
-#config_key = "openai_gpt-4"
-config_key = "mistral_7B_instruct"
+config_key = "openai_gpt-4"
+#config_key = "mistral_7B_instruct"
 
-
+print("Using model {} for evaluation".format(config_key))
 # Get selected configuration
 config = configurations[config_key]
 
@@ -119,11 +119,11 @@ Here is the scale you should use to build your answer to score the quality of th
     try:
         pattern = r"(?<=\{|:|,)\s*'|'\s*(?=[:,}\]])"
         res_content = response.choices[0].message.content
-
+ 
         replacement = '"'
         formatted_res = re.sub(pattern, replacement, res_content[res_content.find('['):])
         print("Formatted Response: {}".format(formatted_res))
-        result = json.loads(formatted_res)
+        result = json.loads(formatted_res.replace("\\'", "'"))
         return {
             "results": [{
                 "key": result[0]["key"],
